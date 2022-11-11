@@ -14,7 +14,21 @@
 
 #define MSG_BUFFER_SIZE 1024
 
-void chat(int s) {}
+void stop_connection(int s) {
+  /* Stop the connection */
+  if (shutdown(s, SHUT_RDWR) == -1) {
+    perror("shutdown");
+    exit(1);
+  }
+}
+
+void close_socket(int s) {
+  /* Close the socket */
+  if (close(s) == -1) {
+    perror("close");
+    exit(1);
+  }
+}
 
 ssize_t recv_msg(int s, char buf[], int size) {
   ssize_t cc;
@@ -44,6 +58,8 @@ int main(void) {
   fprintf(stderr, "Connecting to the server...\n");
   if (connect(s, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
     perror("connect");
+    close_socket(s);
+    return 1;
   }
   fprintf(stderr, "Connected.\n");
 
@@ -51,12 +67,17 @@ int main(void) {
   fprintf(stderr, "Message from the server:\n\n");
   if ((cc = recv_msg(s, buf, sizeof(buf))) == -1) {
     perror("receive");
+    stop_connection(s);
+    close_socket(s);
+    return 1;
   }
   fprintf(stderr, "\n\nFinished receiving.\n");
 
   /* Stop connection */
+  stop_connection(s);
 
   /* Close the socket */
+  close_socket(s);
 
   return 0;
 }
