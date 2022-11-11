@@ -11,16 +11,23 @@
 #define SERVER_ADDR "127.0.0.1"
 #define SERVER_PORT 12345
 
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
+#define MSG_BUFFER_SIZE 1024
+
 enum {
   NQUEUESIZE = 5,
 };
 
-char *message = "Hello!\nGood-bye!!\n";
+const char *disconnect_str = "\1";
+
+void disconnect(int ws) { write(ws, disconnect_str, strlen(disconnect_str)); }
 
 int main(void) {
   int s, ws, soval, cc;
   struct sockaddr_in sa, ca;
   socklen_t ca_len;
+  char message[MSG_BUFFER_SIZE];
 
   /* Create socket */
   if ((s = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -52,37 +59,56 @@ int main(void) {
     exit(1);
   }
 
-  fprintf(stderr, "Ready.\n");
+  fprintf(stderr, "[ready]\n");
 
-  for (;;) {
-    /* Accept connection */
-    fprintf(stderr, "Waiting for a connection...\n");
-    ca_len = sizeof(ca);
-    if ((ws = accept(s, (struct sockaddr *)&ca, &ca_len)) == -1) {
-      perror("accept");
-      exit(1);
-    }
-    fprintf(stderr, "Connection established.\n");
-
-    /* Send message to the client */
-    fprintf(stderr, "Sending the message...\n");
-    if ((cc = write(ws, message, strlen(message))) == -1) {
-      perror("shutdown");
-      exit(1);
-    }
-
-    /* Stop the connection */
-    if (shutdown(ws, SHUT_RDWR) == -1) {
-      perror("shutdown");
-      exit(1);
-    }
-
-    /* Close the socket */
-    if (close(ws) == -1) {
-      perror("close");
-      exit(1);
-    }
-    /* On to the next request */
+  /* Accept connection */
+  fprintf(stderr, "[waiting for a connection...]\n");
+  ca_len = sizeof(ca);
+  if ((ws = accept(s, (struct sockaddr *)&ca, &ca_len)) == -1) {
+    perror("accept");
+    exit(1);
   }
-  /* Infinite loop */
+  fprintf(stderr, "[connection established:\n");
+
+  while (1) {
+    if (feof(stdin)) {
+      disconnect(ws);
+      break;
+    }
+
+    {
+      /* Get client information. */
+      char ip_name[32];
+      inet_ntop(AF_INET, &sa.sin_addr, ip_name, sizeof(ip_name));
+      /* Print client information */
+      fprintf(stdout, "\t%s : %d connected]\n", ip_name, sa.sin_port);
+    }
+
+    /* Wait for user input */
+    memset(message, 0, sizeof(message));
+    fgets(message, sizeof(message), stdin);
+    int len = strlen(message);
+    message[len - 1] = '\0';
+    char new_msg[MSG_BUFFER_SIZE];
+    new_msg[0] = '\2';
+    strncpy(new_msg + 1, message, MIN(len, MSG_BUFFER_SIZE - 1));
+    /* Send message to the client */
+    fprintf(stderr, "[sending the message: %s]\n", new_msg);
+    if ((cc = write(ws, new_msg, len)) == -1) {
+      perror("shutdown");
+      exit(1);
+    }
+  }
+
+  /* Stop the connection */
+  if (shutdown(ws, SHUT_RDWR) == -1) {
+    perror("shutdown");
+    exit(1);
+  }
+
+  /* Close the socket */
+  if (close(ws) == -1) {
+    perror("close");
+    exit(1);
+  }
 }

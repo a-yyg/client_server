@@ -14,12 +14,32 @@
 
 #define MSG_BUFFER_SIZE 1024
 
-void chat(int s) {}
+void stop_connection(int s) {
+  /* Stop the connection */
+  if (shutdown(s, SHUT_RDWR) == -1) {
+    perror("shutdown");
+    exit(1);
+  }
+}
+
+void close_socket(int s) {
+  /* Close the socket */
+  if (close(s) == -1) {
+    perror("close");
+    exit(1);
+  }
+}
 
 ssize_t recv_msg(int s, char buf[], int size) {
   ssize_t cc;
+  memset(buf, 0, size);
   cc = recv(s, buf, size, 0);
-  printf("%s\n", buf);
+  if (cc) {
+    if (buf[0] == '\1')
+      return -1;
+
+    printf("received message of %ld bytes:\n%s\n", cc, buf + 1);
+  }
   return cc;
 }
 
@@ -41,22 +61,32 @@ int main(void) {
   inet_pton(AF_INET, SERVER_ADDR, &sa.sin_addr);
 
   /* Connect to server */
-  fprintf(stderr, "Connecting to the server...\n");
+  fprintf(stderr, "[connecting to the server...]\n");
   if (connect(s, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
     perror("connect");
+    close_socket(s);
+    exit(1);
   }
-  fprintf(stderr, "Connected.\n");
+  fprintf(stderr, "[connected]\n");
 
-  /* Receive message from the server and show it on the screen */
-  fprintf(stderr, "Message from the server:\n\n");
-  if ((cc = recv_msg(s, buf, sizeof(buf))) == -1) {
-    perror("receive");
+  while (1) {
+    /* Receive message from the server and show it on the screen */
+    /* fprintf(stderr, ">message from the server:\n\n"); */
+    if ((cc = recv_msg(s, buf, sizeof(buf))) == -1) {
+      perror("receive");
+      stop_connection(s);
+      close_socket(s);
+      exit(1);
+    }
   }
-  fprintf(stderr, "\n\nFinished receiving.\n");
+
+  fprintf(stderr, "\n\n[finished receiving]\n");
 
   /* Stop connection */
+  stop_connection(s);
 
   /* Close the socket */
+  close_socket(s);
 
   return 0;
 }
